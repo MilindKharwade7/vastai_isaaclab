@@ -549,15 +549,18 @@ native_step_verify() {
         fail "$ISAACLAB_PATH/_isaac_sim does not point at Isaac Sim"
 
     local out
+    # NOTE: isaaclab.sh prints "[INFO] Using Python: ..." to *stdout* AFTER the
+    # wrapped command's output, so `tail -n1` grabs the INFO line. Grep for the
+    # actual payload line instead.
     out="$(il -p -c 'import isaaclab; print(getattr(isaaclab, "__version__", "unknown"))' 2>/dev/null |
-        tail -n1)"
+        grep -vE '^\[INFO\] Using Python' | tail -n1)"
     case "$out" in
         unknown|"") fail "cannot import isaaclab with $ISAACLAB_PATH/_isaac_sim/python.sh" ;;
         *)          echo "    OK    import isaaclab (version $out)" ;;
     esac
 
     out="$(il -p -c 'import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())' 2>/dev/null |
-        tail -n1)"
+        grep -vE '^\[INFO\] Using Python' | tail -n1)"
     if printf '%s' "$out" | grep -q 'True'; then
         echo "    OK    torch $out (version, cuda, cuda_available)"
     else
@@ -572,11 +575,48 @@ native_step_verify() {
         warn "scripts/tutorials/00_sim/log_time.py is not in this revision - skipping the smoke test"
         return 0
     fi
-    echo "    running: ./isaaclab.sh -p scripts/tutorials/00_sim/log_time.py --headless"
-    if timeout 900 bash -c "cd '$ISAACLAB_PATH' && ./isaaclab.sh -p scripts/tutorials/00_sim/log_time.py --headless" \
-        >/tmp/isaaclab_smoke_test.log 2>&1
-    then
-        echo "    OK    the tutorial ran (log: /tmp/isaaclab_smoke_test.log)"
+    # log_time.py runs FOREVER by design (while simulation_app.is_running():
+    # append sim_time to logs/docker_tutorial/log.txt). So "success" = it
+    # starts Kit, prints "[INFO]: Setup complete...", and keeps logging.
+    # Run it in the background, wait for the log to grow, then stop it.
+    echo "    running: ./isaaclab.sh -p scripts/tutorials/00_sim/log_time.py --headless (bounded: start + log growth, then stop)"
+    rm -rf "$ISAACLAB_PATH/logs/docker_tutorial"
+    # setsid: give the whole wrapper+Kit-python subtree its own process group so
+    # we can kill all of it (a bare `kill $pid` orphans the Kit python child).
+    ( cd "$ISAACLAB_PATH" && setsid ./isaaclab.sh -p scripts/tutorials/00_sim/log_time.py --headless \
+        >/tmp/isaaclab_smoke_test.log 2>&1 & echo $! > /tmp/isaaclab_smoke_test.pid )
+    local smoke_pid smoke_ok=0
+    smoke_pid="$(cat /tmp/isaaclab_smoke_test.pid 2>/dev/null)"
+    local i size1=0 size2=0
+    # NOTE: python stdout is block-buffered when redirected, so the tutorial's
+    # "[INFO]: Setup complete..." print may NEVER appear in the capture file
+    # while running. Detect success by the tutorial's own log file growth
+    # (logs/docker_tutorial/log.txt gets a line per sim step, flushed often).
+    for i in $(seq 1 40); do  # up to ~10 min for Kit startup on the first run
+        sleep 15
+        kill -0 "$smoke_pid" 2>/dev/null || break  # exited early -> failure below
+        size1="$(stat -c%s "$ISAACLAB_PATH/logs/docker_tutorial/log.txt" 2>/dev/null || echo 0)"
+        if [ "${size1:-0}" -gt 0 ]; then
+            sleep 15
+            size2="$(stat -c%s "$ISAACLAB_PATH/logs/docker_tutorial/log.txt" 2>/dev/null || echo 0)"
+            if [ "${size2:-0}" -gt "${size1:-0}" ]; then
+                smoke_ok=1
+            fi
+            break
+        fi
+    done
+    # kill the entire process group (wrapper + Kit python), then force-kill
+    local smoke_pgid
+    smoke_pgid="$(ps -o pgid= -p "$smoke_pid" 2>/dev/null | tr -d '[:space:]')"
+    kill -- "-${smoke_pgid:-$smoke_pid}" 2>/dev/null || kill "$smoke_pid" 2>/dev/null || true
+    sleep 3
+    [ -n "$smoke_pgid" ] && kill -9 -- "-$smoke_pgid" 2>/dev/null || kill -9 "$smoke_pid" 2>/dev/null || true
+    # reap the background job started in the subshell (it is not our child, ignore errors)
+    wait "$smoke_pid" 2>/dev/null || true
+    # belt & suspenders: no sim process may outlive the smoke test
+    pgrep -f "log_time.py" >/dev/null 2>&1 && pkill -9 -f "log_time.py" 2>/dev/null || true
+    if [ "$smoke_ok" = 1 ]; then
+        echo "    OK    the tutorial ran: log.txt grew ${size1} -> ${size2} bytes while stepping (log: /tmp/isaaclab_smoke_test.log)"
     else
         fail "log_time.py --headless failed - see /tmp/isaaclab_smoke_test.log"
         tail -n 20 /tmp/isaaclab_smoke_test.log 2>/dev/null
