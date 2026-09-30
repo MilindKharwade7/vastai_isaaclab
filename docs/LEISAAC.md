@@ -41,6 +41,7 @@ Pre-flight only (no side effects), or a plan of every command:
 | `Step 1a` | Environment setup | Miniconda into `/opt/miniconda3` (skipped if conda exists; accepts the Anaconda channel ToS on modern conda) |
 | `Step 1b` | Environment setup | `conda create -n leisaac python=3.11` |
 | `Step 1c` | Environment setup | `conda install -y -c nvidia/label/cuda-12.8.1 -c conda-forge cuda-toolkit` |
+| `Step 1d` | – | `conda init bash zsh`, so `conda activate leisaac` works in a new terminal ([details](#activating-the-environment)) |
 | `Step 2` | Install PyTorch | `torch==2.7.0 torchvision==0.22.0` from `--index-url .../whl/cu128` |
 | `Step 3a` | Install from source | `git clone --depth 1` + `submodule update --init dependencies/IsaacLab` |
 | `Step 3b` | Install from source | `pip install isaacsim[all,extscache]==5.1.0 --extra-index-url https://pypi.nvidia.com` (~10 GB) |
@@ -70,6 +71,7 @@ also cloned — the script clones it non-recursively in that case.
                         (default kitchen_with_orange)
 --with-lerobot          install the optional LeRobot extra
 --no-assets / --no-apt / --no-cuda-toolkit / --no-verify / --no-preflight
+                        / --no-conda-init
 --clean                 remove the conda env first
 --dry-run               print commands, change nothing
 ```
@@ -80,6 +82,36 @@ Environment variables: `LEISAAC_ENV_NAME`, `LEISAAC_WORKDIR`,
 Everything is **idempotent**: conda, the env, torch, the clone/submodule,
 IsaacSim, `isaaclab --install`, and each asset are skipped when already
 present, so a re-run after an interrupted or failed run resumes.
+
+## Activating the environment
+
+`conda: command not found` after installing is expected in the shell that ran
+the installer: Miniconda's batch installer (`-b`) never edits shell init files,
+and the script calls conda by absolute path internally. The script now runs
+`conda init bash zsh` (step **1d**), so **a new terminal works out of the box**:
+
+```bash
+conda activate leisaac
+```
+
+In a shell that was already open while the install ran, `conda` is still
+unknown — the init file was only written, not re-read. Either reconnect, or:
+
+```bash
+source /opt/miniconda3/etc/profile.d/conda.sh && conda activate leisaac
+```
+
+For scripts / cron / `ssh host 'cmd'` (non-interactive shells read no rc file at
+all, so `conda init` cannot help there), activate explicitly:
+
+```bash
+/opt/miniconda3/envs/leisaac/bin/python scripts/environments/list_envs.py   # simplest
+# or
+source /opt/miniconda3/etc/profile.d/conda.sh && conda activate leisaac && ...
+```
+
+`--no-conda-init` skips the rc-file edit if you manage PATH yourself.
+
 
 ## Gotchas found during the real run
 
@@ -129,6 +161,18 @@ from GitHub release assets (`so101_follower.usd`, `kitchen_with_orange.zip`,
 `table_with_cube.zip`), falling back to the `LightwheelAI/leisaac_env`
 HuggingFace repo for any scene not published as a release asset. Without them
 the tasks register fine but the environment errors when it resolves the USD path.
+
+**7. `conda: command not found` in the user's shell.**
+Miniconda's batch installer (`-b -p /opt/miniconda3`) intentionally writes
+nothing to `~/.bashrc`, and the installer only *sources*
+`/opt/miniconda3/etc/profile.d/conda.sh` inside its own subshells -- so the
+summary's `conda activate leisaac` fails in a normal terminal. Step **1d** now
+runs `conda init bash zsh`; already-open shells still need
+`source /opt/miniconda3/etc/profile.d/conda.sh` once. Non-interactive shells
+(`ssh host 'cmd'`, cron) read no rc file at all, so they must either source
+`conda.sh` or call `/opt/miniconda3/envs/leisaac/bin/python` directly. See
+[Activating the environment](#activating-the-environment).
+
 
 
 
@@ -192,6 +236,7 @@ point is affected, so demo datasets cannot be generated until upstream fixes it.
 
 | Symptom | Fix |
 |---|---|
+| `bash: conda: command not found` | shell was open before the install: `source /opt/miniconda3/etc/profile.d/conda.sh`; non-interactive shells must source it or call `/opt/miniconda3/envs/leisaac/bin/python` directly ([more](#activating-the-environment)) |
 | `Do you accept the EULA?` prompt on every launch | `export OMNI_KIT_ACCEPT_EULA=YES` (the installer also writes `isaacsim/kit/EULA_ACCEPTED`) |
 | `libstdc++.so.6: version GLIBCXX_3.4.30 not found` | `conda install -c conda-forge gcc=12 -y` |
 | Qt / EGL / `libGL` errors in a headless container | `unset DISPLAY`, use `--headless` / `--headlessRendering`; `install_apt_deps` installs the usual EGL/GL libs |

@@ -58,6 +58,7 @@ WITH_ASSETS=1
 WITH_APT=1
 DO_VERIFY=1
 DO_CUDA_TOOLKIT=1
+NO_CONDA_INIT=0
 SKIP_PREFLIGHT=0
 CLEAN=0
 DRY_RUN=0
@@ -128,6 +129,9 @@ Options:
   --no-cuda-toolkit       Skip the conda cuda-toolkit step.
   --no-verify             Skip the headless verification run.
   --no-preflight          Skip preflight checks.
+  --no-conda-init         Do not run 'conda init' (conda stays off PATH;
+                          activate with:
+                          source <miniconda>/etc/profile.d/conda.sh).
   --clean                 Remove the conda env before installing.
   --dry-run               Print commands instead of executing them.
   --help                  Show this help.
@@ -159,6 +163,7 @@ parse_args() {
       --no-cuda-toolkit) DO_CUDA_TOOLKIT=0; shift ;;
       --no-verify)       DO_VERIFY=0; shift ;;
       --no-preflight)    SKIP_PREFLIGHT=1; shift ;;
+      --no-conda-init)   NO_CONDA_INIT=1; shift ;;
       --clean)           CLEAN=1; shift ;;
       --dry-run)         DRY_RUN=1; shift ;;
       --help|-h)         usage; exit 0 ;;
@@ -515,6 +520,28 @@ accept_isaacsim_eula() {
   fi
 }
 
+# Miniconda's `-b` (batch) installer deliberately does NOT touch shell init
+# files, so a plain `conda activate ...` in the user's shell fails with
+# "conda: command not found". Register the hook for the common shells so the
+# env is usable in a new terminal (opt out with --no-conda-init).
+init_conda_shell() {
+  step "Step 1d: make conda available in the shell"
+  if [[ $NO_CONDA_INIT -eq 1 ]]; then
+    warn "skipped (--no-conda-init) -- use:  source ${MINICONDA_DIR}/etc/profile.d/conda.sh"
+    return 0
+  fi
+  if [[ $DRY_RUN -eq 1 ]]; then
+    log "[dry-run] would run 'conda init bash zsh' (edits ~/.bashrc / ~/.zshrc)"
+    return 0
+  fi
+  local sh
+  for sh in bash zsh; do
+    "$CONDA_BIN" init "$sh" 2>/dev/null | sed 's/^/    /' || true
+  done
+  log "conda hook installed; in YOUR current shell run:"
+  log "    source ${MINICONDA_DIR}/etc/profile.d/conda.sh && conda activate ${ENV_NAME}"
+}
+
 install_lerobot() {
   step "Step 4: [optional] LeRobot integration"
   if [[ $WITH_LEROBOT -eq 0 ]]; then
@@ -705,7 +732,9 @@ summary() {
 LeIsaac installation finished.
 
   conda env    : ${ENV_NAME}   (${MINICONDA_DIR})
-  activate     : conda activate ${ENV_NAME}
+  activate     : conda activate ${ENV_NAME}        (new shell; 'conda init' ran)
+                   - or, in a shell opened BEFORE this install:
+                   source ${MINICONDA_DIR}/etc/profile.d/conda.sh && conda activate ${ENV_NAME}
   mode         : ${MODE}
   repository   : ${REPO_DIR}
   assets       : ${REPO_DIR}/assets
@@ -749,6 +778,7 @@ main() {
   install_miniconda
   create_env
   install_cuda_toolkit
+  init_conda_shell
   install_torch
 
   if [[ "$MODE" == "source" ]]; then

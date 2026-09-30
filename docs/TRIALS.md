@@ -74,4 +74,11 @@ mandatory rather than cosmetic.
 - Still broken upstream: `scripts/datagen/state_machine/generate.py` crashes on
   episode end (`Termination term 'success' not found`) — repro'd against the
   unmodified checkout, so it is a LeIsaac bug rather than an install problem.
+- Follow-up fix: the summary told users to run `conda activate leisaac`, but
+  the Miniconda batch installer never edits rc files, so `conda` was missing in
+  every terminal. Added **Step 1d** (`conda init bash zsh`, plus
+  `--no-conda-init`); verified in a fresh interactive/login shell
+  (`conda activate leisaac` → env `leisaac`, `import leisaac, isaaclab, torch`
+  OK). Non-interactive shells still need
+  `source /opt/miniconda3/etc/profile.d/conda.sh` — bash reads no rc file there.
 
