@@ -47,3 +47,31 @@ disk); nothing here changed the installed system.
 - `/usr/share/vulkan/icd.d` (container view) carries mesa ICDs only, but
   `/etc/vulkan/icd.d/nvidia_icd.json` + `libnvidia-glvkspirv` +
   `libnvidia-rtcore` are present → GPU Vulkan works.
+
+## 2026-09-30 — LeIsaac installer (`scripts/install_leisaac.sh`)
+
+Full run on this box: RTX 5060 Ti 16 GB (compute capability 12.0), driver
+580.126.09, Linux x86-64 — a Blackwell GPU, so the CUDA 12.8 / torch 2.7 pin is
+mandatory rather than cosmetic.
+
+- `--dry-run` printed the full plan with zero side effects; `--help`, unknown
+  option handling (exit 2) and `bash -n` all clean.
+- Real run: conda env `leisaac` (python 3.11) + `cuda-toolkit` from
+  `nvidia/label/cuda-12.8.1`; torch `2.7.0+cu128`; `isaacsim` 5.1.0.0 with
+  `all,extscache`; IsaacLab @ `3c6e67b` → `isaaclab` 0.47.2; `leisaac` 0.4.0
+  editable. Env footprint ~25 GB, assets ~126 MB.
+- Verification: imports OK, `torch.cuda.is_available()` OK, headless
+  `scripts/environments/list_envs.py` booted Kit and listed **15**
+  `LeIsaac-SO101-*` tasks → `verification succeeded`.
+- Follow-ups exercised manually: `list_envs.py` re-run without the EULA prompt
+  (thanks to `<isaacsim>/kit/EULA_ACCEPTED`), and `teleop_se3_agent.py` boots
+  headless and stops at its documented guard (requires a physical `so101leader`).
+- Failures found and fixed during the run: sb3 pulling torch 2.14 + CUDA-13
+  wheels (constraints file), `flatdict` sdist vs setuptools ≥ 81
+  (`--no-build-isolation`), `set -u` vs conda activate scripts, non-interactive
+  EULA prompt, shallow submodule fetch of IsaacLab. Details in
+  [`LEISAAC.md`](LEISAAC.md#gotchas-found-during-the-real-run).
+- Still broken upstream: `scripts/datagen/state_machine/generate.py` crashes on
+  episode end (`Termination term 'success' not found`) — repro'd against the
+  unmodified checkout, so it is a LeIsaac bug rather than an install problem.
+

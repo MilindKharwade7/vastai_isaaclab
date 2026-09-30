@@ -17,9 +17,10 @@ Kit GUI rendered into the DCV desktop:
 |---|---|
 | [`scripts/onstart.sh`](scripts/onstart.sh) | Vast On-Start Script: XFCE + X/GL runtime + VS Code + root password + NICE DCV server + web viewer + `xfce-session`. Idempotent, survives re-runs |
 | [`scripts/install_isaaclab.sh`](scripts/install_isaaclab.sh) | Installs Isaac Lab per the [Isaac Lab Docker Guide](https://isaac-sim.github.io/IsaacLab/main/source/deployment/docker.html), with `docker` and `native` modes (auto-detected), Isaac Sim version detection, `--check` / `--dry-run` |
+| [`scripts/install_leisaac.sh`](scripts/install_leisaac.sh) | Installs [LeIsaac](https://github.com/LightwheelAI/leisaac) (SO-101 manipulation benchmark on Isaac Sim 5.1 / Isaac Lab 2.3) end to end per its [install guide](https://lightwheelai.github.io/leisaac/docs/getting_started/installation/) — conda env, torch cu128, IsaacSim, IsaacLab, assets, headless verification. Idempotent, `--dry-run` ([docs](docs/LEISAAC.md)) |
 | [`scripts/xwd2png.py`](scripts/xwd2png.py) | Screenshot the DCV display when nothing else is installed (XWD → PNG, pure stdlib) |
 | [`docker/`](docker/) | Option B: `Dockerfile` + `dcv-start.sh` + `verify.sh` + `build.sh` — bake the whole stack into an image for future instances ([notes](docker/README.docker.md)) |
-| [`docs/`](docs/) | Strategy notes: how to pick an approach, and portability rules |
+| [`docs/`](docs/) | Strategy notes: how to pick an approach, and portability rules. Includes [`LEISAAC.md`](docs/LEISAAC.md) for the LeIsaac installer |
 
 ## Quick start (daily driver)
 
@@ -39,6 +40,22 @@ cd /workspace/isaaclab
 ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/train.py --task Isaac-Cartpole-v0
 # (drop --headless to watch it learn in the Kit viewport)
 ```
+
+## Quick start (LeIsaac: SO-101 manipulation tasks)
+
+LeIsaac is a separate, version-pinned stack (Isaac Sim **5.1**, Isaac Lab 2.3,
+python 3.11, torch 2.7.0+cu128) in its own conda environment — it does not
+reuse the Isaac Sim inside the image:
+
+```bash
+nohup /root/install_leisaac.sh > /root/leisaac_install.log 2>&1 &
+tail -f /root/leisaac_install.log          # ~25 GB, tens of minutes
+```
+
+It verifies itself by booting Isaac Sim headless and listing the `LeIsaac-*`
+tasks. Options, the gotchas it works around, and troubleshooting:
+[`docs/LEISAAC.md`](docs/LEISAAC.md).
+
 
 ## Compatibility
 
