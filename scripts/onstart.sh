@@ -297,6 +297,7 @@ npm install -g cline
 git clone https://github.com/MilindKharwade7/vastai_isaaclab.git
 chmod +x vastai_isaaclab/scripts/install_isaaclab.sh
 
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
 
 
 exit $((FAILED > 0 ? 1 : 0))
