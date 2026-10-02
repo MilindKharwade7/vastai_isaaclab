@@ -299,6 +299,7 @@ chmod +x vastai_isaaclab/scripts/install_isaaclab.sh
 
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
 
+echo "set -g mouse on" >> ~/.tmux.conf && tmux source-file ~/.tmux.conf
 
 exit $((FAILED > 0 ? 1 : 0))
 
