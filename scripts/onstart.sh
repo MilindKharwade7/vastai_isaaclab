@@ -290,6 +290,15 @@ if [ "$FAILED" = 0 ]; then
 else
     echo "=== Setup finished with $FAILED error(s) - check the messages above ==="
 fi
+sudo apt update
+sudo apt install -y nodejs npm
+npm install -g cline
+
+git clone https://github.com/MilindKharwade7/vastai_isaaclab.git
+chmod +x vastai_isaaclab/scripts/install_isaaclab.sh
+
+
+
 exit $((FAILED > 0 ? 1 : 0))
 
 
